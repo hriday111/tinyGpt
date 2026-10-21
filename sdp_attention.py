@@ -1,21 +1,22 @@
-import token
-
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
 
-batch_size = 4
-block_size = 8
+batch_size = 64
+block_size = 256
 max_iters = 5000
-eval_interval = 300
-learning_rate = 1e-3
+eval_interval = 500
+learning_rate = 3e-4
 train_data_amount_coeff = 0.9
 device = "cpu"
 if torch.cuda.is_available():
     print("Using CUDA")
     device = "cuda"
 eval_iters = 200
-no_embbeddings = 32
+no_embbeddings = 384
+no_head = 6
+no_layer = 6
+dropout = 0.2
 
 torch.manual_seed(1337)
 
@@ -69,6 +70,7 @@ class Head(nn.Module):
         self.query = nn.Linear(no_embbeddings, head_size, bias=False)
         self.value = nn.Linear(no_embbeddings, head_size, bias=False)
         self.register_buffer("tril", torch.tril(torch.ones(block_size, block_size)))
+        self.dropout = nn.Dropout(dropout)
 
     def forward(self, x):
         B, T, C = x.shape
@@ -80,6 +82,7 @@ class Head(nn.Module):
         )  # (B,T,16) @ (B, 16, T) -> (B, T, T)
         wei = wei.masked_fill(self.tril[:T, :T] == 0, float("-inf"))
         wei = F.softmax(wei, dim=1)
+        wei = self.dropout(wei)
         out = wei @ self.value(x)
         return out
 
@@ -98,10 +101,11 @@ class MultiHeadAttention(nn.Module):
         super().__init__()
         self.heads = nn.ModuleList([Head(head_size) for _ in range(num_heads)])
         self.proj = nn.Linear(no_embbeddings, no_embbeddings)
+        self.dropout = nn.Dropout(dropout)
 
     def forward(self, x):
         out = torch.cat([h(x) for h in self.heads], dim=-1)
-        out = self.proj(out)
+        out = self.dropout(self.proj(out))
         return out
 
 
@@ -112,6 +116,7 @@ class FeedForward(nn.Module):
             nn.Linear(no_embbeddings, 4 * no_embbeddings),
             nn.ReLU(),
             nn.Linear(4 * no_embbeddings, no_embbeddings),
+            nn.Dropout(dropout),
         )
 
     def forward(self, x):
@@ -142,12 +147,10 @@ class BigramLanguageModel(nn.Module):
 
         self.token_embedding_table = nn.Embedding(vocab_size, no_embbeddings)
         self.position_embedding_table = nn.Embedding(block_size, no_embbeddings)
-
         self.blocks = nn.Sequential(
-            Block(no_embbeddings, n_head=4),
-            Block(no_embbeddings, n_head=4),
-            Block(no_embbeddings, n_head=4),
+            *[Block(no_embbeddings, n_head=no_head) for _ in range(no_layer)]
         )
+        self.ln_f = nn.LayerNorm(no_embbeddings)
         self.lm_head = nn.Linear(no_embbeddings, vocab_size)
 
     def forward(self, idx, targets=None):
@@ -159,7 +162,7 @@ class BigramLanguageModel(nn.Module):
         )
         x = token_embedding + position_embedding
         x = self.blocks(x)
-
+        x = self.ln_f(x)
         logits = self.lm_head(x)
         if targets is None:
             loss = None
