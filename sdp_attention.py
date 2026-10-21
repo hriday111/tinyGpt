@@ -9,9 +9,9 @@ eval_interval = 500
 learning_rate = 3e-4
 train_data_amount_coeff = 0.9
 device = "cpu"
-if torch.cuda.is_available():
-    print("Using CUDA")
-    device = "cuda"
+# if torch.cuda.is_available():
+#     print("Using CUDA")
+#     device = "cuda"
 eval_iters = 200
 no_embbeddings = 384
 no_head = 6
