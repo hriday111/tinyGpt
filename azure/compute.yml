@@ -1,0 +1,11 @@
+$schema: https://azuremlschemas.azureedge.net/latest/amlCompute.schema.json
+name: gpu-t4-lp
+type: amlcompute
+size: Standard_NC4as_T4_v3
+min_instances: 0
+max_instances: 1
+idle_time_before_scale_down: 120
+tier: low_priority
+# If low_priority fails (quota/region), change the line above to:
+#   tier: dedicated
+# If N-series GPU quota is unavailable, use azure/compute-cpu.yml instead.

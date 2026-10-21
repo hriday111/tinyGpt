@@ -1,0 +1,24 @@
+$schema: https://azuremlschemas.azureedge.net/latest/commandJob.schema.json
+type: command
+experiment_name: tinygpt
+display_name: sdp-attention-t4
+description: >
+  One-shot training of sdp_attention.py on a single T4 node.
+  Cluster must use min_instances=0 so it scales to zero after the job.
+
+# Upload the repo root (script + input.txt). Paths are relative to this file.
+code: ../
+
+command: >-
+  python sdp_attention.py
+
+environment:
+  image: mcr.microsoft.com/azureml/curated/acpt-pytorch-2.2-cuda12.1:latest
+
+compute: azureml:gpu-t4-lp
+
+resources:
+  instance_count: 1
+
+# Optional: switch to CPU fallback if you created azure/compute-cpu.yml instead
+# compute: azureml:cpu-f4
