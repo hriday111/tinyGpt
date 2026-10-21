@@ -93,13 +93,58 @@ xb, yb = get_batch("train")
         """
 
 
+class MultiHeadAttention(nn.Module):
+    def __init__(self, num_heads, head_size):
+        super().__init__()
+        self.heads = nn.ModuleList([Head(head_size) for _ in range(num_heads)])
+        self.proj = nn.Linear(no_embbeddings, no_embbeddings)
+
+    def forward(self, x):
+        out = torch.cat([h(x) for h in self.heads], dim=-1)
+        out = self.proj(out)
+        return out
+
+
+class FeedForward(nn.Module):
+    def __init__(self, no_embbeddings):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(no_embbeddings, 4 * no_embbeddings),
+            nn.ReLU(),
+            nn.Linear(4 * no_embbeddings, no_embbeddings),
+        )
+
+    def forward(self, x):
+        return self.net(x)
+
+
+class Block(nn.Module):
+    """Transformer Block: communication then computation"""
+
+    def __init__(self, no_embbeddings, n_head):
+        super().__init__()
+        head_size = no_embbeddings // n_head
+        self.sa = MultiHeadAttention(n_head, head_size)
+        self.ffwd = FeedForward(no_embbeddings)
+
+    def forward(self, x):
+        x = x + self.sa(self.ln1(x))
+        x = x + self.ffwd(self.ln2(x))
+        return x
+
+
 class BigramLanguageModel(nn.Module):
     def __init__(self):
         super().__init__()
 
         self.token_embedding_table = nn.Embedding(vocab_size, no_embbeddings)
         self.position_embedding_table = nn.Embedding(block_size, no_embbeddings)
-        self.sa_head = Head(no_embbeddings)  # self attention head
+
+        self.blocks = nn.Sequential(
+            Block(no_embbeddings, n_head=4),
+            Block(no_embbeddings, n_head=4),
+            Block(no_embbeddings, n_head=4),
+        )
         self.lm_head = nn.Linear(no_embbeddings, vocab_size)
 
     def forward(self, idx, targets=None):
@@ -110,7 +155,8 @@ class BigramLanguageModel(nn.Module):
             torch.arange(T, device=device)
         )
         x = token_embedding + position_embedding
-        x = self.sa_head(x)
+        x = self.blocks(x)
+
         logits = self.lm_head(x)
         if targets is None:
             loss = None
